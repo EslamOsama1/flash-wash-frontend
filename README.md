@@ -1,30 +1,63 @@
-# Flash Wash Frontend
+# 🚗 Flash Wash
 
-A modern car wash management system built with Next.js.
+### Smart Car Wash Management System
 
-## Features
+Flash Wash is a web-based car wash management system designed to simplify car wash operations, manage customer orders, and streamline daily business activities.
 
-- Customer car wash booking.
-- Wash package and add-on selection.
-- Online payment submission.
-- Order status tracking.
-- Customer ratings and feedback.
-- Admin dashboard for managing orders, workers, and packages.
-- Operations dashboard for monitoring wash orders.
-- Worker dashboard for managing washing operations.
-- Worker attendance management.
-- Expenses and financial management.
-- Arabic language support.
+The platform provides dedicated interfaces for customers, administrators, operational managers, and workers.
 
-## Tech Stack
+---
 
+## ✨ Features
+
+### 👤 Customer Interface
+- Browse available wash packages and additional services.
+- Create car wash orders.
+- Submit payment information.
+- Track order status.
+- Rate the service after completing an order.
+
+### 🛠️ Admin Dashboard
+- Manage wash orders.
+- Manage workers and wash packages.
+- Manage payment settings.
+- Review orders that require attention.
+- Manage expenses and financial records.
+- Manage helpers and business settings.
+
+### 📋 Operations Dashboard
+- Monitor wash orders.
+- Track operational activities.
+- Review orders requiring attention.
+
+### 🧽 Worker Dashboard
+- View waiting wash orders.
+- Manage active washing operations.
+- Upload before-and-after photos.
+- Record attendance.
+- Complete washing tasks.
+
+---
+
+## 🧰 Tech Stack
+
+**Frontend**
 - Next.js
 - React
 - JavaScript
 - CSS
+
+**Communication**
 - REST API
 
-## Project Structure
+**Integrations**
+- Backend API
+- Cloudinary for image uploads
+- WhatsApp Business Platform integration
+
+---
+
+## 📁 Project Structure
 
 ```text
 flash-wash-frontend/
@@ -41,46 +74,8 @@ flash-wash-frontend/
 │   └── worker/
 ├── lib/
 ├── public/
+│   └── images/
 ├── middleware.js
 ├── package.json
+├── package-lock.json
 └── README.md
-Installation
-
-Clone the repository:
-
-git clone https://github.com/EslamOsama1/flash-wash-frontend.git
-
-Navigate to the project directory:
-
-cd flash-wash-frontend
-
-Install dependencies:
-
-npm install
-Environment Variables
-
-Create a .env.local file in the project root and configure the required environment variables.
-
-Do not commit environment files or expose secret keys.
-
-Run Locally
-
-Start the development server:
-
-npm run dev
-
-Open your browser at:
-
-http://localhost:3000
-
-Build for Production
-npm run build
-Backend
-
-The frontend requires the Flash Wash backend API to support its application features.
-
-Configure the API base URL according to your environment.
-
-License
-
-All rights reserved.
