@@ -161,14 +161,18 @@ export default function CustomerFlow() {
   };
 
   const handleNewOrder = () => {
+    // Keep customer information unchanged.
+    // Clear the previous order and package selections only.
     storage.remove('activeOrderId');
 
     setOrder(null);
     setSelectedPackage(null);
     setSelectedAddons([]);
 
+    // Return directly to package selection.
     setCurrentStep(STEPS.PACKAGES);
   };
+
   if (isInitializing) {
     return (
       <div className="p-12" >
