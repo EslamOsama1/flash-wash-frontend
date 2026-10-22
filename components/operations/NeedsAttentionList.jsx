@@ -89,15 +89,31 @@ export default function NeedsAttentionList({ orders, onConfirm, onCancel }) {
       </div >
 
       {selectedImage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setSelectedImage(null)}>
-          <div className="relative max-w-2xl w-full h-auto max-h-[90vh] bg-white rounded-xl overflow-hidden" onClick={e => e.stopPropagation()} >
-            <img src={selectedImage} alt="Payment Receipt" className="w-full h-full object-contain" />
-            <button onClick={() => setSelectedImage(null)} className="absolute top-4 right-4 bg-white text-black p-2 rounded-full shadow-lg" >
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setSelectedImage(null)}
+        >
+          <div
+            className="relative flex max-h-[90vh] w-full max-w-4xl items-center justify-center overflow-auto rounded-xl bg-black p-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={selectedImage}
+              alt="Payment Receipt"
+              className="block h-auto w-auto max-h-[85vh] max-w-full rounded-lg object-contain"
+            />
+
+            <button
+              type="button"
+              onClick={() => setSelectedImage(null)}
+              className="absolute right-4 top-4 z-10 rounded-full bg-white px-4 py-2 font-bold text-black shadow-lg hover:bg-gray-100"
+            >
               إغلاق
-            </button >
-          </div >
-        </div >
+            </button>
+          </div>
+        </div>
       )}
+
     </div >
   );
 }
