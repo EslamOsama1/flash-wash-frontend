@@ -151,9 +151,51 @@ export default function CustomerForm({ initialData, onSubmit }) {
         const res = await api.get('/helpers/active');
         const activeHelpers = res?.data?.helpers || [];
 
-        if (isMounted) {
-          setHelpers(activeHelpers);
-        }
+        if (!isMounted) return;
+
+        setHelpers(activeHelpers);
+
+        setFormData((prev) => {
+          const savedHelperId =
+            typeof prev.helper === 'object'
+              ? prev.helper?._id
+              : prev.helper;
+
+          const helperStillActive = activeHelpers.some(
+            (helper) => helper._id === savedHelperId
+          );
+
+          if (savedHelperId && !helperStillActive) {
+            const updatedFormData = {
+              ...prev,
+              helper: '',
+            };
+
+            try {
+              const savedCustomerData = JSON.parse(
+                localStorage.getItem('customerData') || 'null'
+              );
+
+              if (savedCustomerData) {
+                savedCustomerData.helper = '';
+
+                localStorage.setItem(
+                  'customerData',
+                  JSON.stringify(savedCustomerData)
+                );
+              }
+            } catch (storageError) {
+              console.error(
+                'UPDATE SAVED CUSTOMER DATA ERROR:',
+                storageError
+              );
+            }
+
+            return updatedFormData;
+          }
+
+          return prev;
+        });
       } catch (err) {
         console.error('FETCH ACTIVE HELPERS ERROR:', err);
 

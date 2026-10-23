@@ -111,6 +111,7 @@ export default function CustomerFlow() {
         helper: customerData.helper || null,
       };
 
+
       console.log('CREATE ORDER PAYLOAD:', payload);
 
       const res = await api.post('/Orders/', payload);

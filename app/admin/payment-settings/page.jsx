@@ -174,44 +174,45 @@ export default function SettingsPage() {
         setPaymentSuccess('');
 
         if (!vodafoneCashNumber.trim()) {
-            setPaymentError(
-                'Vodafone Cash number is required'
-            );
+            setPaymentError('Vodafone Cash number is required');
             return;
         }
 
         if (!instapayAccount.trim()) {
-            setPaymentError(
-                'InstaPay account is required'
-            );
+            setPaymentError('InstaPay account is required');
             return;
         }
 
         try {
             setSavingPayment(true);
 
-            await api.patch('/payment-settings', {
-                vodafoneCashNumber:
-                    vodafoneCashNumber.trim(),
+            const paymentData = {
+                vodafoneCashNumber: vodafoneCashNumber.trim(),
+                instapayAccount: instapayAccount.trim(),
+            };
 
-                instapayAccount:
-                    instapayAccount.trim(),
-            });
+            try {
+                // Try updating existing settings first.
+                await api.patch('/payment-settings', paymentData);
+            } catch (err) {
+                // Create settings only when no settings record exists.
+                if (err.status === 404) {
+                    await api.post('/payment-settings', paymentData);
+                } else {
+                    throw err;
+                }
+            }
 
             setPaymentSuccess(
-                'Payment settings updated successfully.'
+                'Payment settings saved successfully.'
             );
 
             await fetchPaymentSettings();
         } catch (err) {
-            console.error(
-                'UPDATE PAYMENT SETTINGS ERROR:',
-                err
-            );
+            console.error('SAVE PAYMENT SETTINGS ERROR:', err);
 
             setPaymentError(
-                err?.message ||
-                'Failed to update payment settings'
+                err?.message || 'Failed to save payment settings'
             );
         } finally {
             setSavingPayment(false);
@@ -827,7 +828,7 @@ export default function SettingsPage() {
                         {/* InstaPay */}
                         <div>
                             <label className="mb-2 block text-sm font-medium text-slate-700">
-                                InstaPay Account
+                                InstaPay Number
                             </label>
 
                             <input
