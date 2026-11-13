@@ -24,6 +24,8 @@ export default function OrderStatus({
   const [loading, setLoading] = useState(!initialOrder);
 
   useEffect(() => {
+    let active = true;
+
     if (!orderId) {
       console.error('OrderStatus: orderId is missing');
       setLoading(false);
@@ -35,6 +37,8 @@ export default function OrderStatus({
         console.log('Fetching order:', orderId);
 
         const response = await api.get(`/Orders/${orderId}`);
+
+        if (!active) return;
 
         console.log('Order response:', response);
 
@@ -54,9 +58,9 @@ export default function OrderStatus({
           onCompleted?.(fetchedOrder);
         }
       } catch (err) {
-        console.error('Failed to fetch order status:', err);
+        if (active) console.error('Failed to fetch order status:', err);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     };
 
@@ -64,7 +68,10 @@ export default function OrderStatus({
 
     const interval = setInterval(fetchOrder, 15000);
 
-    return () => clearInterval(interval);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
   }, [orderId, onCompleted]);
 
   if (loading || !order) {

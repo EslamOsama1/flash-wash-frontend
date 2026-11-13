@@ -362,7 +362,7 @@ export default function CustomerForm({ initialData, onSubmit }) {
           </p>
 
           <h2 className="text-2xl font-bold tracking-tight md:text-3xl">
-            We're Currently Closed
+            We&apos;re Currently Closed
           </h2>
 
           <p className="mt-3 text-sm leading-6 text-slate-300">

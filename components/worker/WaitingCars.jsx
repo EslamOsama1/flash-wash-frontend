@@ -140,6 +140,11 @@ export default function WaitingCars({ cars, onStart }) {
             })
             .filter(Boolean);
 
+          const createdAt = car.createdAt ? new Date(car.createdAt) : null;
+          const waitingTime = createdAt && !Number.isNaN(createdAt.getTime())
+            ? formatDistanceToNow(createdAt)
+            : null;
+
           return (
             <div
               key={car.id || car._id}
@@ -225,13 +230,7 @@ export default function WaitingCars({ cars, onStart }) {
                       <Clock size={14} />
 
                       <span>
-                        Waiting{' '}
-                        {formatDistanceToNow(
-                          new Date(
-                            car.createdAt ||
-                            Date.now()
-                          )
-                        )}
+                        {waitingTime ? `Waiting ${waitingTime}` : 'Waiting time unavailable'}
                       </span>
 
                     </div>

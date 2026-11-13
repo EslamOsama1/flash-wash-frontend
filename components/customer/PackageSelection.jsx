@@ -14,39 +14,6 @@ import { Button } from '@/components/shared/Button';
 import { api } from '@/lib/api';
 import { Loader } from '@/components/shared/Loader';
 
-const FALLBACK_PACKAGES = [
-  {
-    id: 'base',
-    name: 'الباقة الأساسية',
-    price: 50,
-    description: 'غسيل وتجفيف السيارة من الخارج.'
-  },
-  {
-    id: 'premium',
-    name: 'الباقة المميزة',
-    price: 100,
-    description: 'غسيل خارجي وتنظيف داخلي بالمكنسة وشمع.'
-  }
-];
-
-const FALLBACK_ADDONS = [
-  {
-    id: 'engine',
-    name: 'تنظيف المحرك',
-    price: 30
-  },
-  {
-    id: 'wax',
-    name: 'Wax',
-    price: 25
-  },
-  {
-    id: 'interior',
-    name: 'تنظيف داخلي عميق',
-    price: 40
-  }
-];
-
 export default function PackageSelection({
   onBack,
   onSelect,
@@ -56,6 +23,8 @@ export default function PackageSelection({
   const [packages, setPackages] = useState([]);
   const [addonsList, setAddonsList] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [retryCount, setRetryCount] = useState(0);
 
   const [selectedPkg, setSelectedPkg] = useState(
     initialPackage || null
@@ -66,9 +35,20 @@ export default function PackageSelection({
   );
 
   useEffect(() => {
+    let active = true;
+
     api.get('/packages')
       .then((response) => {
-        const allServices = response?.data?.packages || [];
+        const allServices = response?.data?.packages;
+        if (!Array.isArray(allServices) || allServices.some(
+          item => !item || typeof item !== 'object' ||
+            typeof item._id !== 'string' || !item._id.trim() ||
+            (item.type !== 'base' && item.type !== 'add_on')
+        )) {
+          throw new Error('Invalid packages response');
+        }
+
+        if (!active) return;
 
         const basePackages = allServices.filter(
           item => item.type === 'base'
@@ -78,42 +58,36 @@ export default function PackageSelection({
           item => item.type === 'add_on'
         );
 
-        setPackages(
-          basePackages.length > 0
-            ? basePackages
-            : FALLBACK_PACKAGES
-        );
-
-        setAddonsList(
-          addons.length > 0
-            ? addons
-            : FALLBACK_ADDONS
-        );
-
+        setPackages(basePackages);
+        setAddonsList(addons);
+        setSelectedPkg(previous => basePackages.find(
+          pkg => pkg._id === previous?._id
+        ) || null);
+        setSelectedAddons(previous => previous.map(selected => addons.find(
+          addon => addon._id === selected?._id
+        )).filter(Boolean));
+        setError('');
         setLoading(false);
       })
       .catch((error) => {
+        if (!active) return;
         console.error('Failed to load packages:', error);
 
-        setPackages(FALLBACK_PACKAGES);
-        setAddonsList(FALLBACK_ADDONS);
-
+        setPackages([]);
+        setAddonsList([]);
+        setError('تعذر تحميل باقات الغسيل. يرجى المحاولة مرة أخرى.');
         setLoading(false);
       });
-  }, []);
+
+    return () => {
+      active = false;
+    };
+  }, [retryCount]);
 
   const isSameItem = (a, b) => {
     if (!a || !b) return false;
 
-    if (a._id && b._id) {
-      return a._id === b._id;
-    }
-
-    if (a.id && b.id) {
-      return a.id === b.id;
-    }
-
-    return a.name === b.name;
+    return Boolean(a._id && b._id && a._id === b._id);
   };
 
   const toggleAddon = (addon) => {
@@ -142,6 +116,26 @@ export default function PackageSelection({
       </div >
     );
   }
+
+  if (error) {
+    return (
+      <div dir="rtl" className="mx-auto flex min-h-[500px] w-full max-w-4xl flex-col items-center justify-center rounded-3xl bg-white p-8 text-center shadow-xl">
+        <p role="alert" className="mb-5 text-red-600">{error}</p>
+        <Button onClick={() => {
+          setError('');
+          setLoading(true);
+          setRetryCount(count => count + 1);
+        }}>
+          إعادة المحاولة
+        </Button>
+      </div>
+    );
+  }
+
+  const validSelectedPkg = packages.find(pkg => pkg._id && pkg._id === selectedPkg?._id);
+  const validSelectedAddons = selectedAddons.map(selected => addonsList.find(
+    addon => addon._id && addon._id === selected?._id
+  )).filter(Boolean);
 
   return (
     <div dir="rtl" className="mx-auto flex h-full w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-white shadow-xl shadow-slate-200/60 ring-1 ring-slate-100" >
@@ -202,6 +196,12 @@ export default function PackageSelection({
             </div >
 
             <div className="grid gap-4 sm:grid-cols-2" >
+
+              {packages.length === 0 && (
+                <p role="status" className="col-span-full rounded-xl bg-slate-50 p-6 text-center text-slate-600">
+                  لا توجد باقات غسيل متاحة حاليًا. يرجى المحاولة لاحقًا.
+                </p>
+              )}
 
               {
                 packages.map(pkg => {
@@ -312,7 +312,7 @@ export default function PackageSelection({
           </section >
 
           {/* ================= ADDONS ================= */}
-          < section className="mt-8" >
+          {packages.length > 0 && addonsList.length > 0 && < section className="mt-8" >
 
             <div className="mb-4 flex items-center justify-between" >
 
@@ -431,7 +431,7 @@ export default function PackageSelection({
                 })}
 
             </div >
-          </section >
+          </section >}
 
           {/* Trust indicator */}
           < div className="mt-8 flex items-center justify-center gap-2 rounded-xl bg-slate-50 px-4 py-3 text-xs font-medium text-slate-500" >
@@ -446,19 +446,17 @@ export default function PackageSelection({
 
           <Button
             className="w-full rounded-xl bg-blue-600 py-3.5 text-base font-semibold shadow-lg shadow-blue-600/20 transition-all hover:bg-blue-700 hover:shadow-xl hover:shadow-blue-600/25 disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={!selectedPkg}
-            onClick={() =>
-              onSelect(
-                selectedPkg,
-                selectedAddons
-              )
-            }
+            disabled={!validSelectedPkg}
+            onClick={() => {
+              if (!validSelectedPkg) return;
+              onSelect(validSelectedPkg, validSelectedAddons);
+            }}
           >
             متابعة
           </Button>
 
           {
-            !selectedPkg && (
+            packages.length > 0 && !validSelectedPkg && (
               <p className="mt-2 text-center text-xs text-slate-400" >
                 من فضلك اختار باقة غسيل للمتابعة.
               </p >

@@ -579,7 +579,7 @@ export default function WorkersPage() {
             <section className="mb-8">
                 <div className="mb-5">
                     <h2 className="text-2xl font-bold text-slate-900">
-                        Today's Attendance
+                        Today&apos;s Attendance
                     </h2>
 
                     <p className="mt-1 text-sm text-slate-500">

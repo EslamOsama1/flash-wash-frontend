@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { storage } from '@/lib/storage';
 import { api } from '@/lib/api';
 import CustomerForm from './CustomerForm';
@@ -22,6 +22,19 @@ const STEPS = {
   RATING: 'RATING',
 };
 
+const getOrderStep = (existingOrder) => {
+  if (['cancelled', 'completed', 'waiting', 'washing'].includes(existingOrder.status)) {
+    return STEPS.STATUS;
+  }
+
+  if (existingOrder.status !== 'pending') return null;
+  if (existingOrder.needsAttention) return STEPS.REVIEW;
+  if (existingOrder.paymentStatus === 'pending') return STEPS.PAYMENT;
+  if (existingOrder.paymentStatus === 'paid') return STEPS.STATUS;
+
+  return null;
+};
+
 export default function CustomerFlow() {
   const [currentStep, setCurrentStep] = useState(STEPS.INFO);
   const [customerData, setCustomerData] = useState(null);
@@ -29,9 +42,14 @@ export default function CustomerFlow() {
   const [selectedAddons, setSelectedAddons] = useState([]);
   const [order, setOrder] = useState(null);
   const [isInitializing, setIsInitializing] = useState(true);
+  const [restoreAttempt, setRestoreAttempt] = useState(0);
+  const [restoreError, setRestoreError] = useState('');
+  const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+  const creationInFlight = useRef(false);
 
   // Load saved customer data and active order
   useEffect(() => {
+    let active = true;
     const saved = storage.get('customerData');
 
     if (saved) {
@@ -45,47 +63,73 @@ export default function CustomerFlow() {
       return;
     }
 
+    setRestoreError('');
     api.get(`/Orders/${activeOrderId}`)
       .then((response) => {
-        console.log('RESTORED ORDER RESPONSE:', response);
-
         const fetchedOrder = response?.data?.washOrder;
+        const nextStep = fetchedOrder && getOrderStep(fetchedOrder);
 
-        console.log('RESTORED ORDER:', fetchedOrder);
-
-        if (!fetchedOrder) {
-          throw new Error('Order not found in response');
+        if (
+          !fetchedOrder?._id ||
+          String(fetchedOrder._id) !== String(activeOrderId) ||
+          !nextStep ||
+          (nextStep === STEPS.PAYMENT &&
+            (typeof fetchedOrder.package !== 'object' ||
+              !fetchedOrder.package ||
+              !Array.isArray(fetchedOrder.addOns)))
+        ) {
+          throw new Error('The saved order could not be verified.');
         }
 
+        if (!active) return;
+
+        const restoredCustomer = {
+          customerName: fetchedOrder.customerName,
+          phone: fetchedOrder.phone,
+          car: fetchedOrder.car,
+          plateNumber: fetchedOrder.plateNumber,
+          helper: fetchedOrder.helper?._id || fetchedOrder.helper || '',
+        };
+
+        setCustomerData(restoredCustomer);
+        storage.set('customerData', restoredCustomer);
         setOrder(fetchedOrder);
 
-        // Restore package and add-ons from the active order
-        if (fetchedOrder.package) {
-          setSelectedPackage(fetchedOrder.package);
-        }
-
-        if (Array.isArray(fetchedOrder.addOns)) {
-          setSelectedAddons(fetchedOrder.addOns);
-        }
-
-        if (fetchedOrder.status === 'cancelled') {
-          setCurrentStep(STEPS.STATUS);
-        } else if (fetchedOrder.needsAttention) {
-          setCurrentStep(STEPS.REVIEW);
-        } else if (fetchedOrder.paymentStatus === 'pending') {
-          setCurrentStep(STEPS.PAYMENT);
-        } else {
-          setCurrentStep(STEPS.STATUS);
-        }
+        setSelectedPackage(fetchedOrder.package && typeof fetchedOrder.package === 'object'
+          ? { ...fetchedOrder.package, price: fetchedOrder.packagePrice }
+          : null);
+        setSelectedAddons(Array.isArray(fetchedOrder.addOns)
+          ? fetchedOrder.addOns.map((addon, index) => ({
+            ...addon,
+            ...fetchedOrder.addOnSnapshots?.[index],
+          }))
+          : []);
+        setCurrentStep(nextStep);
       })
       .catch((err) => {
+        if (!active) return;
         console.error('FAILED TO RESTORE ORDER:', err);
-        storage.remove('activeOrderId');
+        if (err.status === 404 && err.message === 'Wash order not found') {
+          storage.remove('activeOrderId');
+          setOrder(null);
+          setCurrentStep(STEPS.INFO);
+        } else {
+          setRestoreError('Unable to verify your existing order. Please retry before creating another order.');
+        }
       })
       .finally(() => {
-        setIsInitializing(false);
+        if (active) setIsInitializing(false);
       });
-  }, []);
+
+    return () => {
+      active = false;
+    };
+  }, [restoreAttempt]);
+
+  const retryRestore = () => {
+    setIsInitializing(true);
+    setRestoreAttempt((attempt) => attempt + 1);
+  };
 
   const handleInfoSubmit = (data) => {
     setCustomerData(data);
@@ -100,6 +144,21 @@ export default function CustomerFlow() {
   };
 
   const handleOrderConfirm = async () => {
+    if (creationInFlight.current) return;
+
+    if (order?._id || order?.id) {
+      retryRestore();
+      return;
+    }
+
+    if (storage.get('activeOrderId')) {
+      retryRestore();
+      return;
+    }
+
+    creationInFlight.current = true;
+    setIsCreatingOrder(true);
+
     try {
       const payload = {
         customerName: customerData.customerName,
@@ -118,13 +177,25 @@ export default function CustomerFlow() {
 
       console.log('CREATE ORDER RESPONSE:', res);
 
-      if (!res?.data?.newOrder) {
+      if (!res?.data?.newOrder?._id) {
         throw new Error('Order was created but response is invalid');
       }
 
       const newOrder = res.data.newOrder;
 
       setOrder(newOrder);
+      setSelectedPackage((selected) => ({
+        ...selected,
+        price: newOrder.packagePrice,
+      }));
+      const selectedAddonsById = new Map(
+        selectedAddons.map((addon) => [String(addon._id), addon])
+      );
+      setSelectedAddons((newOrder.addOns || []).map((addonId, index) => ({
+        ...selectedAddonsById.get(String(addonId)),
+        _id: addonId,
+        ...newOrder.addOnSnapshots?.[index],
+      })));
 
       storage.set('activeOrderId', newOrder._id);
 
@@ -133,6 +204,9 @@ export default function CustomerFlow() {
       console.error('CREATE ORDER ERROR:', err);
 
       alert(`Failed to create order: ${err.message}`);
+    } finally {
+      creationInFlight.current = false;
+      setIsCreatingOrder(false);
     }
   };
 
@@ -154,12 +228,17 @@ export default function CustomerFlow() {
     setCurrentStep(STEPS.STATUS);
   };
 
-  const handleOrderCompleted = (completedOrder) => {
+  const handleOrderCompleted = useCallback((completedOrder) => {
+    const activeOrderId = storage.get('activeOrderId');
+    if (!activeOrderId || String(activeOrderId) !== String(completedOrder?._id || completedOrder?.id)) {
+      return;
+    }
+
     console.log('ORDER COMPLETED:', completedOrder);
 
     setOrder(completedOrder);
     setCurrentStep(STEPS.STATUS);
-  };
+  }, []);
 
   const handleNewOrder = () => {
     // Keep customer information unchanged.
@@ -179,6 +258,17 @@ export default function CustomerFlow() {
       <div className="p-12" >
         <Loader text="Loading..." />
       </div >
+    );
+  }
+
+  if (restoreError) {
+    return (
+      <div className="mx-auto max-w-xl rounded-2xl bg-white p-8 text-center shadow-sm">
+        <p role="alert" className="mb-5 text-red-600">{restoreError}</p>
+        <button type="button" onClick={retryRestore} className="rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white">
+          Retry loading order
+        </button>
+      </div>
     );
   }
 
@@ -206,10 +296,19 @@ export default function CustomerFlow() {
       {
         currentStep === STEPS.SUMMARY && (
           <OrderSummary
-            customerData={customerData}
+            customerData={order || customerData}
             pkg={selectedPackage}
             addons={selectedAddons}
-            onBack={() => setCurrentStep(STEPS.PACKAGES)}
+            totalPrice={order?.totalPrice}
+            isLoading={isCreatingOrder}
+            onBack={() => {
+              if (creationInFlight.current) return;
+              if (order) {
+                retryRestore();
+              } else {
+                setCurrentStep(STEPS.PACKAGES);
+              }
+            }}
             onConfirm={handleOrderConfirm}
           />
         )

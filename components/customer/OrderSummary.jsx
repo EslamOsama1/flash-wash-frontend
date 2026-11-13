@@ -15,12 +15,15 @@ export default function OrderSummary({
   customerData,
   pkg,
   addons,
+  totalPrice,
+  isLoading,
   onBack,
   onConfirm
 }) {
-  const total =
+  const total = totalPrice ?? (
     Number(pkg?.price || 0) +
-    addons.reduce((sum, a) => sum + Number(a?.price || 0), 0);
+    addons.reduce((sum, a) => sum + Number(a?.price || 0), 0)
+  );
   console.log('PACKAGE DATA:', pkg);
   console.log('ADDONS DATA:', addons);
   const optimizedImageUrl = (url, width = 600, height = 600) => {
@@ -39,6 +42,7 @@ export default function OrderSummary({
           <button
             onClick={onBack}
             type="button"
+            disabled={isLoading}
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/10 text-white transition-all hover:bg-white/20"
             aria-label="رجوع"
           >
@@ -238,6 +242,7 @@ export default function OrderSummary({
             className="w-full rounded-xl bg-blue-600 py-3.5 text-base font-semibold shadow-lg shadow-blue-600/20 transition-all hover:bg-blue-700 hover:shadow-xl hover:shadow-blue-600/25"
             size="lg"
             onClick={onConfirm}
+            isLoading={isLoading}
           >
             تأكيد الطلب
           </Button>

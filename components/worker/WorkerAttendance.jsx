@@ -177,6 +177,8 @@ export default function WorkerAttendance({ onAttendanceChange }) {
 
             setAttendance(res?.data?.attendance || null);
 
+            onAttendanceChange?.(true);
+
             setSuccess(
                 'Check-in recorded successfully.'
             );
