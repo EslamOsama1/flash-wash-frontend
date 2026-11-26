@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ClipboardList,
     AlertTriangle,
@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 
 import { api } from '@/lib/api';
+import CancellationRequests from '@/components/operations/CancellationRequests';
 
 const statsConfig = [
     {
@@ -58,14 +59,13 @@ export default function AdminDashboard() {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState('');
+    const [cancellationRequests, setCancellationRequests] = useState([]);
+    const dashboardRevision = useRef(0);
 
-    const fetchDashboard = async () => {
-        try {
-            setError('');
-
-            const res = await api.get('/operations/dashboard');
-
-            console.log('ADMIN DASHBOARD RESPONSE:', res.data);
+    const fetchDashboard = useCallback(() => {
+        const revision = ++dashboardRevision.current;
+        return api.get('/operations/dashboard').then(res => {
+            if (revision !== dashboardRevision.current) return;
 
             const dashboardStats =
                 res?.data?.stats;
@@ -74,6 +74,8 @@ export default function AdminDashboard() {
                 throw new Error('Dashboard stats not found');
             }
 
+            setError('');
+            setCancellationRequests(res.data.cancellationRequests ?? []);
             setStats({
                 pending: dashboardStats.pending ?? 0,
                 needsAttention: dashboardStats.needsAttention ?? 0,
@@ -82,7 +84,8 @@ export default function AdminDashboard() {
                 completed: dashboardStats.completed ?? 0,
                 late: dashboardStats.late ?? 0,
             });
-        } catch (err) {
+        }).catch(err => {
+            if (revision !== dashboardRevision.current) return;
             console.error('ADMIN DASHBOARD ERROR:', err);
 
             setError(
@@ -90,15 +93,18 @@ export default function AdminDashboard() {
                 err?.message ||
                 'Failed to load dashboard data.'
             );
-        } finally {
-            setLoading(false);
-            setRefreshing(false);
-        }
-    };
+        }).finally(() => {
+            if (revision === dashboardRevision.current) {
+                setLoading(false);
+                setRefreshing(false);
+            }
+        });
+    }, []);
 
     useEffect(() => {
         fetchDashboard();
-    }, []);
+        return () => { dashboardRevision.current += 1; };
+    }, [fetchDashboard]);
 
     const handleRefresh = async () => {
         setRefreshing(true);
@@ -143,7 +149,6 @@ export default function AdminDashboard() {
             {/* ================= CONTENT ================= */}
 
             < main className="px-6 py-8 lg:px-8" >
-
                 {/* Welcome */}
 
                 < div className="mb-8 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-700 p-6 text-white shadow-lg shadow-blue-600/20" >
@@ -326,6 +331,12 @@ export default function AdminDashboard() {
                     </div >
 
                 </div >
+
+                {!loading && (
+                    <div className="mt-6 empty:hidden">
+                        <CancellationRequests orders={cancellationRequests} onApproved={handleRefresh} />
+                    </div>
+                )}
 
             </main >
         </div >

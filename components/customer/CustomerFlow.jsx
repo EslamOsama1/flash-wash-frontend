@@ -175,8 +175,6 @@ export default function CustomerFlow() {
 
       const res = await api.post('/Orders/', payload);
 
-      console.log('CREATE ORDER RESPONSE:', res);
-
       if (!res?.data?.newOrder?._id) {
         throw new Error('Order was created but response is invalid');
       }
@@ -197,6 +195,10 @@ export default function CustomerFlow() {
         ...newOrder.addOnSnapshots?.[index],
       })));
 
+      storage.set('activeOrderCancellation', {
+        orderId: newOrder._id,
+        token: res.data.cancellationToken,
+      });
       storage.set('activeOrderId', newOrder._id);
 
       setCurrentStep(STEPS.PAYMENT);
@@ -244,6 +246,7 @@ export default function CustomerFlow() {
     // Keep customer information unchanged.
     // Clear the previous order and package selections only.
     storage.remove('activeOrderId');
+    storage.remove('activeOrderCancellation');
 
     setOrder(null);
     setSelectedPackage(null);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { Loader } from '@/components/shared/Loader';
@@ -9,6 +9,7 @@ import { RefreshCw } from 'lucide-react';
 import DashboardStats from '@/components/operations/DashboardStats';
 import NeedsAttentionList from '@/components/operations/NeedsAttentionList';
 import OrdersTable from '@/components/operations/OrdersTable';
+import CancellationRequests from '@/components/operations/CancellationRequests';
 
 export default function OperationsDashboard() {
   const router = useRouter();
@@ -18,7 +19,14 @@ export default function OperationsDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdate, setLastUpdate] = useState(new Date());
 
-  const fetchDashboard = useCallback(async (isManualRefresh = false) => {
+  const dashboardRequest = useRef(null);
+  const actionsInFlight = useRef(new Set());
+  const mounted = useRef(false);
+
+  const fetchDashboard = useCallback(() => {
+    if (!mounted.current) return;
+    if (dashboardRequest.current) return dashboardRequest.current.promise;
+
     const token = localStorage.getItem('operationalManagerToken');
 
     if (!token) {
@@ -26,135 +34,77 @@ export default function OperationsDashboard() {
       return;
     }
 
-    if (isManualRefresh) setRefreshing(true);
+    const request = {};
+    dashboardRequest.current = request;
+    request.promise = (async () => {
+      try {
+        const res = await api.get('/operations/dashboard');
+        if (dashboardRequest.current !== request) return dashboardRequest.current?.promise;
 
-    try {
-      const res = await api.get('/operations/dashboard');
-      setData(res.data);
-      setLastUpdate(new Date());
-    } catch (err) {
-      console.error(err);
+        setData(res.data);
+        setLastUpdate(new Date());
+      } catch (err) {
+        if (dashboardRequest.current !== request) return dashboardRequest.current?.promise;
+        console.error(err);
 
-      if (
-        err?.status === 401 ||
-        err?.response?.status === 401 ||
-        err?.message?.includes('not logged in') ||
-        err?.message?.includes('Invalid token')
-      ) {
-        localStorage.removeItem('operationalManagerToken');
-        router.replace('/operations/login');
-        return;
+        if (
+          err?.status === 401 ||
+          err?.response?.status === 401 ||
+          err?.message?.includes('not logged in') ||
+          err?.message?.includes('Invalid token')
+        ) {
+          localStorage.removeItem('operationalManagerToken');
+          router.replace('/operations/login');
+        }
+      } finally {
+        if (dashboardRequest.current === request) {
+          dashboardRequest.current = null;
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+    })();
+    return request.promise;
   }, [router]);
 
   useEffect(() => {
+    mounted.current = true;
     fetchDashboard();
+    const interval = setInterval(fetchDashboard, 10000);
 
-    const interval = setInterval(() => {
-      fetchDashboard();
-    }, 10000);
-
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      mounted.current = false;
+      dashboardRequest.current = null;
+    };
   }, [fetchDashboard]);
 
-  const handleConfirmPayment = async (orderId) => {
-    setData(prev => {
-      if (!prev) return prev;
-
-      const order = prev.needsAttentionOrders?.find(
-        o => o.id === orderId || o._id === orderId
-      );
-
-      if (!order) return prev;
-
-      const updatedOrder = {
-        ...order,
-        paymentStatus: 'paid',
-        status: 'waiting',
-        needsAttention: false,
-      };
-
-      return {
-        ...prev,
-        needsAttentionOrders: prev.needsAttentionOrders.filter(
-          o => o.id !== orderId && o._id !== orderId
-        ),
-        waitingOrders: [updatedOrder, ...prev.waitingOrders],
-        stats: {
-          ...prev.stats,
-          needsAttention: Math.max(
-            0,
-            prev.stats.needsAttention - 1
-          ),
-          waiting: prev.stats.waiting + 1,
-        },
-      };
-    });
-
-    try {
-      await api.patch(
-        `/operations/orders/${orderId}/confirm-payment`
-      );
-    } catch (err) {
-      alert('فشل في تأكيد الدفع');
-      fetchDashboard();
-    }
+  const handleRefresh = () => {
+    setRefreshing(true);
+    fetchDashboard();
   };
 
-  const handleRemovePendingOrder = async (orderId) => {
-    try {
-      console.log('REMOVING PENDING ORDER:', orderId);
-
-      const res = await api.patch(
-        `/operations/orders/${orderId}/remove`
-      );
-
-      console.log('REMOVE RESPONSE:', res);
-
-      await fetchDashboard();
-    } catch (err) {
-      console.error('REMOVE PENDING ORDER ERROR:', err);
-
-      alert(err.message || 'فشل في إزالة الطلب');
-
-      await fetchDashboard();
-    }
+  const refreshAfterAction = () => {
+    // Any GET started before the successful mutation may contain old data.
+    dashboardRequest.current = null;
+    return fetchDashboard();
   };
 
-  const handleCancelOrder = async (orderId) => {
-    setData(prev => {
-      if (!prev) return prev;
-
-      return {
-        ...prev,
-        needsAttentionOrders:
-          prev.needsAttentionOrders.filter(
-            o => o.id !== orderId && o._id !== orderId
-          ),
-        pendingOrders: prev.pendingOrders.filter(
-          o => o.id !== orderId && o._id !== orderId
-        ),
-        stats: {
-          ...prev.stats,
-          needsAttention: Math.max(
-            0,
-            prev.stats.needsAttention - 1
-          ),
-        },
-      };
-    });
-
+  const runOrderAction = async (orderId, action, errorMessage) => {
+    const pending = actionsInFlight.current;
+    if (pending.has(orderId)) return;
+    pending.add(orderId);
     try {
-      await api.patch(
-        `/operations/orders/${orderId}/cancel`
-      );
+      await api.patch(`/operations/orders/${orderId}/${action}`);
+      await refreshAfterAction();
     } catch (err) {
-      alert('فشل في الإلغاء');
-      fetchDashboard();
+      if (action === 'remove') {
+        console.error('REMOVE PENDING ORDER ERROR:', err);
+      }
+      alert(action === 'remove' && err.message ? err.message : errorMessage);
+      await fetchDashboard();
+    } finally {
+      pending.delete(orderId);
     }
   };
 
@@ -193,7 +143,7 @@ export default function OperationsDashboard() {
 
         <Button
           variant="outline"
-          onClick={() => fetchDashboard(true)}
+          onClick={handleRefresh}
           isLoading={refreshing}
           className="flex items-center gap-2"
         >
@@ -206,12 +156,13 @@ export default function OperationsDashboard() {
       </div>
 
       <DashboardStats stats={data.stats} />
+      <CancellationRequests orders={data.cancellationRequests} onApproved={refreshAfterAction} />
 
       {data.needsAttentionOrders?.length > 0 && (
         <NeedsAttentionList
           orders={data.needsAttentionOrders}
-          onConfirm={handleConfirmPayment}
-          onCancel={handleCancelOrder}
+          onConfirm={id => runOrderAction(id, 'confirm-payment', 'فشل في تأكيد الدفع')}
+          onCancel={id => runOrderAction(id, 'cancel', 'فشل في الإلغاء')}
         />
       )}
 
@@ -235,7 +186,7 @@ export default function OperationsDashboard() {
             title="الطلبات المعلقة (Pending)"
             orders={data.pendingOrders}
             type="pending"
-            onRemove={handleRemovePendingOrder}
+            onRemove={id => runOrderAction(id, 'remove', 'فشل في إزالة الطلب')}
           />
         </div>
       )}
